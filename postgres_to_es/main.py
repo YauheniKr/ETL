@@ -1,28 +1,22 @@
 import os
 from dataclasses import asdict
 from datetime import datetime, timedelta
+from urllib.parse import urljoin
 
-import psycopg2 as psycopg2
+import requests
 from dotenv import load_dotenv
 from psycopg2.extensions import connection as _connection
-from psycopg2.extras import DictCursor
 
-from postgres_to_es.elastic_loader import ESLoader
+from postgres_to_es.elastic_loader import logger, create_index
 from postgres_to_es.extract import Postgres_Exctract, \
-    get_film_list_id, prepare_filmwork_update, film_get_result_data  # , prepare_person_update, prepare_genre_update, \
-
+    get_film_list_id, prepare_filmwork_update, film_get_result_data, \
+    get_all_film_to_upload  # , prepare_person_update, prepare_genre_update, \
 from postgres_to_es.models import Filmwork, Person
+from postgres_to_es.utils import conn_context
 
-load_dotenv()
-DSL = {
-    'dbname': os.environ.get('DB_NAME'),
-    'user': os.environ.get('POSTGRES_USER'),
-    'password': os.environ.get('POSTGRES_PASSWORD'),
-    'host': os.environ.get('DB_HOST'),
-    'port': os.environ.get('DB_PORT'),
-    'options': '-c search_path=content'
-}
 last_request_time = (datetime.now() - timedelta(days=1))
+URL = 'http://192.168.50.17:9200/'
+index = 'movies'
 
 
 def transform_films(updated_films):
@@ -71,14 +65,36 @@ def exchange_app(pg_conn: _connection):
         if id_data:
             films_result = film_get_result_data(postgres_request, id_data)
             ready_update = transform_films(films_result)
-    print(ready_update)
+    return ready_update
 
+
+def check_index(index_name):
+    url = urljoin(URL, index_name),
+    response = requests.get(*url, headers={'Content-Type': 'application/json'})
+    if response.status_code == 200:
+        logger.info(f'Схема индекса {index_name} уже существует')
+        return True
+    return False
+
+
+def index_creation(url, index_name):
+    create_status = create_index(url, index_name)
+    return create_status
+
+
+def main():
+    index_status = check_index(index)
+    with conn_context() as context:
+        postgres_request = Postgres_Exctract(context)
+        if not index_status:
+            logger.info(f'Схемы {index} не существует. Создаем схему')
+            #create_index(URL, index)
+            logger.info(f'Получаем данные о фильмах.')
+            film_data = get_all_film_to_upload(postgres_request)
+            print(film_data)
+            logger.info(f'Загружаем данные о фильмах в Схему {index}.')
 
 
 
 if __name__ == '__main__':
-    es = ESLoader('http://192.168.50.17:9200/')
-    print(es.check_index('movies'))
-    #with psycopg2.connect(**DSL, cursor_factory=DictCursor) as pg_conn:
-    #    exchange_app(pg_conn)
-        # pg_conn.close()
+    main()
