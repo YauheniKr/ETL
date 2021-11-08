@@ -5,7 +5,8 @@ from urllib.parse import urljoin
 
 import requests
 
-logger = logging.getLogger()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class ESLoader:
@@ -43,12 +44,15 @@ class ESLoader:
             if error_message:
                 logger.error(error_message)
 
-    def check_index(self, index_name):
-        url = urljoin(self.url, index_name),
-        response = requests.get(*url, headers={'Content-Type': 'application/x-ndjson'}
-        )
-        if response.status_code == 200:
-            return True
-        return False
 
-    #def create_index(self, index):
+def __get_index_data():
+    with open('schema.txt') as file:
+        return json.load(file)
+
+
+def create_index(url, index):
+    index_schema = json.dumps(__get_index_data())
+    url = urljoin(url, index)
+    create_response = requests.request('PUT', url, headers={'Content-Type': 'application/json'}, data=index_schema)
+    logger.info(f'Схема {index} успешно создана')
+    return create_response
