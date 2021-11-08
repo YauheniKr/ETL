@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from typing import List
 
@@ -54,6 +55,31 @@ WHERE updated_at > %(updatedat)s
 ORDER BY updated_at
 LIMIT 100
 """
+SQL_REQUEST = """
+SELECT "content"."film_work"."id","content"."film_work"."title", "content"."film_work"."description",
+       "content"."film_work"."rating", "content"."film_work"."type",
+       ARRAY_AGG(DISTINCT "content"."genre"."name" ) AS "genre",
+       Json_agg(DISTINCT ("content"."person"."id", "content"."person"."full_name"))
+           FILTER (WHERE "content"."person_film_work"."role" = 'actor') AS "actors",
+       ARRAY_AGG(DISTINCT "content"."person"."full_name" ) FILTER (WHERE "content"."person_film_work"."role" = 'actor')
+           AS "actors_names",
+       ARRAY_AGG(DISTINCT ("content"."person"."full_name"))
+           FILTER (WHERE "content"."person_film_work"."role" = 'director') AS "director",
+       Json_agg(DISTINCT ("content"."person"."id", "content"."person"."full_name") )
+           FILTER (WHERE "content"."person_film_work"."role" = 'writer') AS "writers",
+       ARRAY_AGG(DISTINCT ("content"."person"."full_name") )
+           FILTER (WHERE "content"."person_film_work"."role" = 'writer') AS "writers_names"
+FROM "content"."film_work"
+    INNER JOIN "content"."genre_film_work"
+        ON ("content"."film_work"."id" = "content"."genre_film_work"."film_work_id")
+    LEFT OUTER JOIN "content"."genre"
+        ON ("content"."genre_film_work"."genre_id" = "content"."genre"."id")
+    LEFT OUTER JOIN "content"."person_film_work"
+        ON ("content"."film_work"."id" = "content"."person_film_work"."film_work_id")
+    LEFT OUTER JOIN "content"."person"
+        ON ("content"."person_film_work"."person_id" = "content"."person"."id")
+GROUP BY "content"."film_work"."id"
+"""
 
 
 class Postgres_Exctract:
@@ -73,27 +99,6 @@ class Postgres_Exctract:
         return out
 
 
-# def prepare_person_update(postgres: Postgres_Exctract, last_request_time: datetime) -> List[dict]:
-#    params = {'updatedat': last_request_time}
-#    persons_id = tuple([person['id'] for person in postgres.postgres_request(PERSON_REQUEST, params)])
-#    film_list = postgres.postgres_request(FILM_REQUEST,
-#                                          {'persons': persons_id, 'table': AsIs('content.person_film_work'),
-#                                           'field': AsIs('pfw.person_id')})
-#    films_id = tuple([film['id'] for film in film_list])
-#    film_result = postgres.postgres_request(FILM_REQUEST_PREPARE, {'films_id': films_id})
-#    return film_result
-#
-#
-# def prepare_genre_update(postgres: Postgres_Exctract, last_request_time: datetime) -> List[dict]:
-#    params = {'updatedat': last_request_time}
-#    genre_id = tuple([genre['id'] for genre in postgres.postgres_request(GENRE_REQUEST, params)])
-#    film_list = postgres.postgres_request(FILM_REQUEST, {'persons': genre_id, 'table': AsIs('content.genre_film_work'),
-#                                                         'field': AsIs('pfw.genre_id')})
-#    films_id = tuple([film['id'] for film in film_list])
-#    film_result = postgres.postgres_request(FILM_REQUEST_PREPARE, {'films_id': films_id})
-#    return film_result
-
-
 def get_film_list_id(postgres: Postgres_Exctract, data_id, table, field):
     film_list = postgres.postgres_request(FILM_REQUEST,
                                           {'persons': data_id, 'table': AsIs(table), 'field': AsIs(field)})
@@ -105,6 +110,21 @@ def prepare_filmwork_update(postgres: Postgres_Exctract, last_request_time: date
     film_to_update = postgres.postgres_request(FILM_UPDATE_REQUEST, params)
     return film_to_update
 
+
 def film_get_result_data(postgres: Postgres_Exctract, films):
     film_result = postgres.postgres_request(FILM_REQUEST_PREPARE, {'films_id': films})
     return film_result
+
+
+def get_all_film_to_upload(postgres: Postgres_Exctract):
+    results = postgres.postgres_request(SQL_REQUEST)
+    for result in results:
+        if result['actors']:
+            result['actors'] = [{'id':actor['f1'], 'fullname':actor['f2']} for actor in result['actors']]
+        else:
+            result['actors'] = []
+        if result['writers']:
+            result['writers'] = [{'id': writer['f1'], 'fullname': writer['f2']} for writer in result['writers']]
+        else:
+            result['writers'] = []
+    return results
