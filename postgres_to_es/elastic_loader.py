@@ -65,11 +65,11 @@ class ESLoader:
         return create_response
 
 
-def load_all_files(film_data: List[dict], esl: ESLoader, index: str) -> None:
+def load_all_files(film_data: List[list], esl: ESLoader, index: str) -> None:
     """
     :param film_data: данные для загрузки в виде списка словарей
-    :param esl:
-    :param index:
+    :param esl: экземпляр класса ESLoader
+    :param index:название схемы данных для загрузки в elastic
     :return:
     """
     for film_pack in film_data:
