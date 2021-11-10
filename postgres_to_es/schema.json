@@ -45,7 +45,7 @@
       "id": {
         "type": "keyword"
       },
-      "imdb_rating": {
+      "rating": {
         "type": "float"
       },
       "genre": {
