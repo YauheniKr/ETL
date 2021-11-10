@@ -26,7 +26,7 @@ class ESLoader:
         return prepared_query
 
     @backoff()
-    def load_to_es(self, records: List[dict], index_name: str)-> None:
+    def load_to_es(self, records: List[dict], index_name: str) -> None:
         """
         Отправка запроса в ES и разбор ошибок сохранения данных
         :param records: Список словарей с данными

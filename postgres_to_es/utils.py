@@ -5,6 +5,9 @@ import os
 import time
 from typing import Any, Optional
 
+import psycopg2
+from urllib3.exceptions import NewConnectionError, MaxRetryError
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -70,13 +73,13 @@ def backoff(start_sleep_time=0.1, factor=2, border_sleep_time=10):
             t = start_sleep_time * factor ** i
             while True:
                 try:
-                    logger.info(f'Пытаемся подключится')
+                    logger.info('Пытаемся подключится')
                     out = func(*args, **kwargs)
-                    logger.info(f'Подключение успешно выполнено')
+                    logger.info('Подключение успешно выполнено')
                     return out
-                except: #(psycopg2.Error, TimeoutError, NewConnectionError, ConnectionError, MaxRetryError,
-                        #ConnectionRefusedError) as e:
-                    logger.error(f'Произошла ошибка  при подключении')
+                except(psycopg2.Error, TimeoutError, NewConnectionError, ConnectionError, MaxRetryError,
+                        ConnectionRefusedError) as e:
+                    logger.error(f'Произошла ошибка {e} при подключении')
                     time.sleep(t)
                     i += 1
                     if t < border_sleep_time:

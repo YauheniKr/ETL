@@ -7,7 +7,7 @@ from psycopg2.extras import DictCursor
 
 from postgres_to_es.utils import backoff
 
-PERSON_REQUEST = f"""
+PERSON_REQUEST = """
 SELECT id, updated_at
 FROM content.person
 WHERE updated_at > %(updatedat)s
@@ -15,7 +15,7 @@ ORDER BY updated_at
 LIMIT 100
 """
 
-FILM_REQUEST = f"""
+FILM_REQUEST = """
 SELECT fw.id, fw.updated_at
 FROM content.film_work fw
 LEFT JOIN %(table)s pfw ON pfw.film_work_id = fw.id
@@ -23,14 +23,14 @@ WHERE %(field)s IN %(persons)s
 ORDER BY fw.updated_at
 """
 
-FILM_REQUEST_PREPARE = f"""
+FILM_REQUEST_PREPARE = """
 SELECT
-    fw.id as fw_id, 
-    fw.title, 
-    fw.description, 
-    fw.rating, 
-    pfw.role, 
-    p.id, 
+    fw.id as fw_id,
+    fw.title,
+    fw.description,
+    fw.rating,
+    pfw.role,
+    p.id,
     p.full_name,
     g.name
 FROM content.film_work fw
@@ -41,7 +41,7 @@ LEFT JOIN content.genre g ON g.id = gfw.genre_id
 WHERE fw.id IN %(films_id)s
 """
 
-GENRE_REQUEST = f"""
+GENRE_REQUEST = """
 SELECT id, updated_at
 FROM content.genre
 WHERE updated_at > %(updatedat)s
@@ -49,7 +49,7 @@ ORDER BY updated_at
 LIMIT 100
 """
 
-FILM_UPDATE_REQUEST = f"""
+FILM_UPDATE_REQUEST = """
 SELECT id, updated_at
 FROM %(table)s
 WHERE updated_at > %(updatedat)s
@@ -116,7 +116,7 @@ class PostgresExctract:
             self.connection.close()
 
 
-def get_film_list_id(postgres: PostgresExctract, data_id:tuple, table:str, field:str) -> Generator:
+def get_film_list_id(postgres: PostgresExctract, data_id: tuple, table: str, field: str) -> Generator:
     """
     :param postgres: экземпляр класса  PostgresExctract для выполнения запроса в БД
     :param data_id: кортеж с id фильмов
@@ -129,7 +129,7 @@ def get_film_list_id(postgres: PostgresExctract, data_id:tuple, table:str, field
     return film_list
 
 
-def prepare_filmwork_update(postgres: PostgresExctract, last_request_time: datetime, table:str) -> Generator:
+def prepare_filmwork_update(postgres: PostgresExctract, last_request_time: datetime, table: str) -> Generator:
     """
     Функция для отслеживания изменений в таблицах БД
     :param postgres: экземпляр класса  PostgresExctract для выполнения запроса в БД
@@ -142,7 +142,7 @@ def prepare_filmwork_update(postgres: PostgresExctract, last_request_time: datet
     return film_to_update
 
 
-def film_get_result_data(postgres: PostgresExctract, films:Tuple[dict]) -> Generator:
+def film_get_result_data(postgres: PostgresExctract, films: Tuple[dict]) -> Generator:
     """
     Получаем информацию о фильмах в которых произошли изменения
     :param postgres: экземпляр класса  PostgresExctract для выполнения запроса в БД

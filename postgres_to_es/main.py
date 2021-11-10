@@ -28,7 +28,7 @@ DSL = {
 }
 
 
-def transform_films(updated_films:List[dict])-> List[dict]:
+def transform_films(updated_films: List[dict]) -> List[dict]:
     out = {}
     for film in updated_films:
         if not out.get(film['fw_id']):
@@ -59,7 +59,7 @@ def transform_films(updated_films:List[dict])-> List[dict]:
     return list(out.values())
 
 
-def exchange_app(postgres_request:PostgresExctract, request_time:datetime, table:str) -> List[dict]:
+def exchange_app(postgres_request: PostgresExctract, request_time: datetime, table: List[str]) -> List[dict]:
     """
     Мониторинг обновлений в БД
     :param postgres_request: экземпляр класса  PostgresExctract для выполнения запроса в БД
@@ -82,7 +82,7 @@ def exchange_app(postgres_request:PostgresExctract, request_time:datetime, table
 
 
 @backoff()
-def check_index(index_name:str)->bool:
+def check_index(index_name: str) -> bool:
     """
     Проверяем наличие индекса в эластик
     :param index_name: Имян индекса
@@ -103,7 +103,7 @@ def main():
     if not index_status:
         logger.info(f'Схемы {index} не существует. Создаем схему')
         esl.create_index(index)
-        logger.info(f'Получаем данные о фильмах.')
+        logger.info('Получаем данные о фильмах.')
         film_data = get_all_film_to_upload(postgres_request)
         logger.info(f'Загружаем данные о фильмах в Схему {index}.')
         load_all_files(film_data, esl, index)
