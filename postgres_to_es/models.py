@@ -17,7 +17,7 @@ class Filmwork:
     description: str
     writers: List[Person]
     actors: List[Person]
-    writers_name: List[str]
-    actors_name: List[str]
+    writers_names: List[str]
+    actors_names: List[str]
     director: List[str]
     genre: List[str]
