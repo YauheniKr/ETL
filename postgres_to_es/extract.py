@@ -1,10 +1,11 @@
-import json
-from datetime import datetime, timedelta
-from typing import List
+from datetime import datetime
+from typing import List, Generator, Tuple
 
+import psycopg2
 from psycopg2.extensions import AsIs
+from psycopg2.extras import DictCursor
 
-last_request_time = str(datetime.now() - timedelta(days=1))
+from postgres_to_es.utils import backoff
 
 PERSON_REQUEST = f"""
 SELECT id, updated_at
@@ -53,11 +54,10 @@ SELECT id, updated_at
 FROM %(table)s
 WHERE updated_at > %(updatedat)s
 ORDER BY updated_at
-LIMIT 100
 """
 SQL_REQUEST = """
 SELECT "content"."film_work"."id","content"."film_work"."title", "content"."film_work"."description",
-       "content"."film_work"."rating", "content"."film_work"."type",
+       "content"."film_work"."rating",
        ARRAY_AGG(DISTINCT "content"."genre"."name" ) AS "genre",
        Json_agg(DISTINCT ("content"."person"."id", "content"."person"."full_name"))
            FILTER (WHERE "content"."person_film_work"."role" = 'actor') AS "actors",
@@ -82,49 +82,103 @@ GROUP BY "content"."film_work"."id"
 """
 
 
-class Postgres_Exctract:
+class PostgresExctract:
 
-    def __init__(self, pg_conn):
-        self.pg_conn = pg_conn
-        self.cursor = self.pg_conn.cursor()
+    def __init__(self, settings):
+        self.settings = settings
 
-    def dictfetchall(self):
-        columns = [col[0] for col in self.cursor.description]
-        data = self.cursor.fetchall()
-        return [dict(zip(columns, row)) for row in data]
-
-    def postgres_request(self, sql_request, params=None):
+    def postgres_request(self, sql_request, params=None, n=200) -> Generator:
+        """
+        Исполняющий метод. По выпонении закрывает соединение
+        :param sql_request: запрос для исполнения
+        :param params: параметр для подстановки в запрос
+        :param n: размер пачки данных запроса возвращаемых через один цикл
+        :return:
+        """
+        self._create_connection()
         self.cursor.execute(sql_request, params)
-        out = self.dictfetchall()
-        return out
+        while True:
+            out = self.cursor.fetchmany(n)
+            if not out:
+                break
+            yield out
+        self._close_connection()
+
+    @backoff()
+    def _create_connection(self) -> None:
+        self.connection = psycopg2.connect(**self.settings)
+        self.cursor = self.connection.cursor(cursor_factory=DictCursor)
+
+    def _close_connection(self) -> None:
+        if self.connection:
+            if not self.cursor.closed:
+                self.cursor.close()
+            self.connection.close()
 
 
-def get_film_list_id(postgres: Postgres_Exctract, data_id, table, field):
+def get_film_list_id(postgres: PostgresExctract, data_id:tuple, table:str, field:str) -> Generator:
+    """
+    :param postgres: экземпляр класса  PostgresExctract для выполнения запроса в БД
+    :param data_id: кортеж с id фильмов
+    :param table: название тадлицы для линкования(Join)
+    :param field: поле по которому буде идти сравнение
+    :return:
+    """
     film_list = postgres.postgres_request(FILM_REQUEST,
                                           {'persons': data_id, 'table': AsIs(table), 'field': AsIs(field)})
     return film_list
 
 
-def prepare_filmwork_update(postgres: Postgres_Exctract, last_request_time: datetime, table) -> List[dict]:
+def prepare_filmwork_update(postgres: PostgresExctract, last_request_time: datetime, table:str) -> Generator:
+    """
+    Функция для отслеживания изменений в таблицах БД
+    :param postgres: экземпляр класса  PostgresExctract для выполнения запроса в БД
+    :param last_request_time: время последнего запроса
+    :param table:название тадлицы для линкования(Join)
+    :return:
+    """
     params = {'updatedat': last_request_time, 'table': AsIs(table)}
     film_to_update = postgres.postgres_request(FILM_UPDATE_REQUEST, params)
     return film_to_update
 
 
-def film_get_result_data(postgres: Postgres_Exctract, films):
+def film_get_result_data(postgres: PostgresExctract, films:Tuple[dict]) -> Generator:
+    """
+    Получаем информацию о фильмах в которых произошли изменения
+    :param postgres: экземпляр класса  PostgresExctract для выполнения запроса в БД
+    :param films: кортеж словарей с id фиильмов
+    :return: Генератор с результатом выполнения запроса
+    """
     film_result = postgres.postgres_request(FILM_REQUEST_PREPARE, {'films_id': films})
     return film_result
 
 
-def get_all_film_to_upload(postgres: Postgres_Exctract):
+def get_all_film_to_upload(postgres: PostgresExctract) -> Generator:
+    """
+    Функция для выполнения запроса получения сведений обо всех фильмах в БД
+    :param postgres: экземпляр класса  PostgresExctract для выполнения запроса в БД
+    :return: Генератор сс результатом выполнения запроса в БД
+    """
     results = postgres.postgres_request(SQL_REQUEST)
-    for result in results:
+    return results
+
+
+def adopt_request_result(request_result: List[list]) -> List[dict]:
+    """
+    Функция изменяет ключи в словарях входного списка
+    :param request_result: Список словарей для изменения
+    :return: Итоговоый список словарей
+    """
+    out = []
+    for result in request_result:
+        result = dict(result)
         if result['actors']:
-            result['actors'] = [{'id':actor['f1'], 'fullname':actor['f2']} for actor in result['actors']]
+            result['actors'] = [{'id': actor['f1'], 'name': actor['f2']} for actor in result['actors']]
         else:
             result['actors'] = []
         if result['writers']:
-            result['writers'] = [{'id': writer['f1'], 'fullname': writer['f2']} for writer in result['writers']]
+            result['writers'] = [{'id': writer['f1'], 'name': writer['f2']} for writer in result['writers']]
         else:
             result['writers'] = []
-    return results
+        out.append(result)
+    return out
