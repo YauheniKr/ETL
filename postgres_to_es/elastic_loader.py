@@ -1,5 +1,5 @@
 import json
-from typing import List
+from typing import List, Generator
 from urllib.parse import urljoin
 
 import requests
@@ -65,7 +65,7 @@ class ESLoader:
         return create_response
 
 
-def load_all_files(film_data: List[list], esl: ESLoader, index: str) -> None:
+def load_all_files(film_data: Generator, esl: ESLoader, index: str) -> None:
     """
     :param film_data: данные для загрузки в виде списка словарей
     :param esl: экземпляр класса ESLoader
