@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Generator, Tuple
+from typing import Generator, List, Tuple
 
 import psycopg2
 from psycopg2.extensions import AsIs

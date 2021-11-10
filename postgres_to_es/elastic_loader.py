@@ -1,5 +1,5 @@
 import json
-from typing import List, Generator
+from typing import Generator, List
 from urllib.parse import urljoin
 
 import requests

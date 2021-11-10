@@ -8,9 +8,10 @@ from urllib.parse import urljoin
 import requests
 from dotenv import load_dotenv
 
-from postgres_to_es.elastic_loader import logger, ESLoader, load_all_files
-from postgres_to_es.extract import PostgresExctract, prepare_filmwork_update, film_get_result_data, \
-    get_all_film_to_upload, get_film_list_id
+from postgres_to_es.elastic_loader import ESLoader, load_all_files, logger
+from postgres_to_es.extract import (PostgresExctract, film_get_result_data,
+                                    get_all_film_to_upload, get_film_list_id,
+                                    prepare_filmwork_update)
 from postgres_to_es.models import Filmwork, Person
 from postgres_to_es.utils import JsonFileStorage, State, backoff
 
