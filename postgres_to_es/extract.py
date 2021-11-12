@@ -110,10 +110,18 @@ class PostgresExctract:
 
     @backoff(logger)
     def _create_connection(self) -> None:
+        """
+        Создаем соединение
+        :return:
+        """
         self.connection = psycopg2.connect(**self.settings)
         self.cursor = self.connection.cursor(cursor_factory=DictCursor)
 
     def _close_connection(self) -> None:
+        """
+        Проверяем что соединение существует, и курсор не закрыт, то закрываем
+        :return:
+        """
         if self.connection:
             if not self.cursor.closed:
                 self.cursor.close()
