@@ -3,7 +3,7 @@ import os
 import time
 from dataclasses import asdict
 from datetime import datetime
-from typing import List
+from typing import List, Union
 from urllib.parse import urljoin
 
 import requests
@@ -13,7 +13,8 @@ from postgres_to_es.elastic_loader import ESLoader, load_all_files
 from postgres_to_es.extract import (PostgresExctract, film_get_result_data,
                                     get_all_film_to_upload, get_film_list_id,
                                     prepare_filmwork_update)
-from postgres_to_es.models import Filmwork, Person
+from postgres_to_es.models import (Filmwork, FilmWorkTables, GenreTables,
+                                   Person, PersonTables)
 from postgres_to_es.utils import JsonFileStorage, State, backoff
 
 load_dotenv()
@@ -34,6 +35,12 @@ logger = logging.getLogger(__name__)
 
 
 def transform_films(updated_films: List[dict]) -> List[dict]:
+    """
+    Траснформируем данные и заполняем аггрегационные поля данными
+    :param updated_films: список словарей с данными о фильмах
+    :return: список словарей с полями с данными
+    """
+
     out = {}
     for film in updated_films:
         if not out.get(film['fw_id']):
@@ -64,7 +71,8 @@ def transform_films(updated_films: List[dict]) -> List[dict]:
     return list(out.values())
 
 
-def exchange_app(postgres_request: PostgresExctract, request_time: datetime, table: List[str]) -> List[dict]:
+def exchange_app(postgres_request: PostgresExctract, request_time: datetime,
+                 table: Union[PersonTables, GenreTables, FilmWorkTables]) -> List[dict]:
     """
     Мониторинг обновлений в БД
     :param postgres_request: экземпляр класса  PostgresExctract для выполнения запроса в БД
@@ -72,12 +80,12 @@ def exchange_app(postgres_request: PostgresExctract, request_time: datetime, tab
     :param table: список таблиц для передачи в запрос
     :return: данные об обновлениях
     """
-    get_updated_data = prepare_filmwork_update(postgres_request, request_time, table[0])
+    get_updated_data = prepare_filmwork_update(postgres_request, request_time, table.table_to_check_update)
     get_updated_data = [dict(d) for data in get_updated_data for d in data]
     id_data = tuple([updated_data['id'] for updated_data in get_updated_data])
     ready_update = {}
-    if get_updated_data and table[1]:
-        film_list_id = get_film_list_id(postgres_request, id_data, *table[1:])
+    if get_updated_data and table.table_list[1]:
+        film_list_id = get_film_list_id(postgres_request, id_data, *table.table_list[1:])
         id_data = tuple(dict(f) for films in film_list_id for f in films)
     if id_data:
         films_result = film_get_result_data(postgres_request, id_data)
@@ -102,9 +110,15 @@ def check_index(index_name: str) -> bool:
 
 
 def main():
+    # Инициализируем экземплары классов
     esl = ESLoader(URL)
     index_status = check_index(INDEX)
     postgres_request = PostgresExctract(DSL)
+    person_tables = PersonTables(['content.person', 'content.person_film_work', 'pfw.person_id'])
+    genre_tables = GenreTables(['content.genre', 'content.person_film_work', 'pfw.genre_id'])
+    firlmwork_tables = FilmWorkTables(['content.film_work', ''])
+
+    # проверяем наличие схемы и если еет создаем и переливаем все файлы из БД
     if not index_status:
         logger.info(f'Схемы {INDEX} не существует. Создаем схему')
         esl.create_index(INDEX)
@@ -112,23 +126,26 @@ def main():
         film_data = get_all_film_to_upload(postgres_request)
         logger.info(f'Загружаем данные о фильмах в Схему {INDEX}.')
         load_all_files(film_data, esl, INDEX)
+    # Инициализируем хранилище и хранение состояния
     json_storage = JsonFileStorage('sw_templates.json')
     state = State(json_storage)
-    table_list_to_check = [['content.person', 'content.person_film_work', 'pfw.person_id'],
-                           ['content.genre', 'content.person_film_work', 'pfw.genre_id'], ['content.film_work', '']
-                           ]
+
+    # Список классов определяющих таблицы для проверки
+    table_list_to_check = [person_tables, genre_tables, firlmwork_tables]
+
+    # цикл для сканирования обновлений
     while True:
         for table in table_list_to_check:
-            if not state.get_state(table[0]):
+            if not state.get_state(table.table_to_check_update):
                 run_time = datetime.now()
             else:
-                run_time = state.get_state(table[0])
+                run_time = state.get_state(table.table_to_check_update)
             prepared_data = exchange_app(postgres_request, run_time, table)
             if prepared_data:
                 logger.info('Заливаем изменения в Elastic')
                 esl.load_to_es(prepared_data, INDEX)
             check_time = datetime.now().isoformat()
-            state.set_state(table[0], check_time)
+            state.set_state(table.table_to_check_update, check_time)
         logger.info(f'Засыпаем на {SLEEP_TIME} сек.')
         time.sleep(SLEEP_TIME)
 
