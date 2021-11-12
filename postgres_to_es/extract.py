@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Generator, List, Tuple
 
@@ -6,6 +7,9 @@ from psycopg2.extensions import AsIs
 from psycopg2.extras import DictCursor
 
 from postgres_to_es.utils import backoff
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 PERSON_REQUEST = """
 SELECT id, updated_at
@@ -104,7 +108,7 @@ class PostgresExctract:
             yield out
         self._close_connection()
 
-    @backoff()
+    @backoff(logger)
     def _create_connection(self) -> None:
         self.connection = psycopg2.connect(**self.settings)
         self.cursor = self.connection.cursor(cursor_factory=DictCursor)
