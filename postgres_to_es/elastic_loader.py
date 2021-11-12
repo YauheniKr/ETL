@@ -1,11 +1,15 @@
 import json
+import logging
 from typing import Generator, List
 from urllib.parse import urljoin
 
 import requests
 
 from .extract import adopt_request_result
-from .utils import backoff, logger
+from .utils import backoff
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class ESLoader:
@@ -25,7 +29,7 @@ class ESLoader:
             prepared_query.extend([json.dumps({'index': {'_index': index_name, '_id': row['id']}}), json.dumps(row)])
         return prepared_query
 
-    @backoff()
+    @backoff(logger)
     def load_to_es(self, records: List[dict], index_name: str) -> None:
         """
         Отправка запроса в ES и разбор ошибок сохранения данных
