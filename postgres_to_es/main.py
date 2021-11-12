@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from dataclasses import asdict
@@ -8,7 +9,7 @@ from urllib.parse import urljoin
 import requests
 from dotenv import load_dotenv
 
-from postgres_to_es.elastic_loader import ESLoader, load_all_files, logger
+from postgres_to_es.elastic_loader import ESLoader, load_all_files
 from postgres_to_es.extract import (PostgresExctract, film_get_result_data,
                                     get_all_film_to_upload, get_film_list_id,
                                     prepare_filmwork_update)
@@ -16,8 +17,8 @@ from postgres_to_es.models import Filmwork, Person
 from postgres_to_es.utils import JsonFileStorage, State, backoff
 
 load_dotenv()
-URL = 'http://192.168.50.17:9200/'
-index = 'movies'
+URL = os.environ.get('URL')
+INDEX = 'movies'
 DSL = {
     'dbname': os.environ.get('DB_NAME'),
     'user': os.environ.get('POSTGRES_USER'),
@@ -26,6 +27,10 @@ DSL = {
     'port': os.environ.get('DB_PORT'),
     'options': '-c search_path=content'
 }
+SLEEP_TIME = 30
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def transform_films(updated_films: List[dict]) -> List[dict]:
@@ -81,7 +86,7 @@ def exchange_app(postgres_request: PostgresExctract, request_time: datetime, tab
     return ready_update
 
 
-@backoff()
+@backoff(logger)
 def check_index(index_name: str) -> bool:
     """
     Проверяем наличие индекса в эластик
@@ -98,15 +103,15 @@ def check_index(index_name: str) -> bool:
 
 def main():
     esl = ESLoader(URL)
-    index_status = check_index(index)
+    index_status = check_index(INDEX)
     postgres_request = PostgresExctract(DSL)
     if not index_status:
-        logger.info(f'Схемы {index} не существует. Создаем схему')
-        esl.create_index(index)
+        logger.info(f'Схемы {INDEX} не существует. Создаем схему')
+        esl.create_index(INDEX)
         logger.info('Получаем данные о фильмах.')
         film_data = get_all_film_to_upload(postgres_request)
-        logger.info(f'Загружаем данные о фильмах в Схему {index}.')
-        load_all_files(film_data, esl, index)
+        logger.info(f'Загружаем данные о фильмах в Схему {INDEX}.')
+        load_all_files(film_data, esl, INDEX)
     json_storage = JsonFileStorage('sw_templates.json')
     state = State(json_storage)
     table_list_to_check = [['content.person', 'content.person_film_work', 'pfw.person_id'],
@@ -121,11 +126,11 @@ def main():
             prepared_data = exchange_app(postgres_request, run_time, table)
             if prepared_data:
                 logger.info('Заливаем изменения в Elastic')
-                esl.load_to_es(prepared_data, index)
+                esl.load_to_es(prepared_data, INDEX)
             check_time = datetime.now().isoformat()
             state.set_state(table[0], check_time)
-        logger.info('Засыпаем на 60 сек.')
-        time.sleep(30)
+        logger.info(f'Засыпаем на {SLEEP_TIME} сек.')
+        time.sleep(SLEEP_TIME)
 
 
 if __name__ == '__main__':
