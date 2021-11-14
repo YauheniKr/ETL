@@ -19,7 +19,7 @@ from postgres_to_es.utils import JsonFileStorage, State, backoff
 
 load_dotenv()
 URL = os.environ.get('URL')
-INDEX = 'movies'
+INDEX = os.environ.get('INDEX')
 DSL = {
     'dbname': os.environ.get('DB_NAME'),
     'user': os.environ.get('POSTGRES_USER'),
@@ -28,7 +28,7 @@ DSL = {
     'port': os.environ.get('DB_PORT'),
     'options': '-c search_path=content'
 }
-SLEEP_TIME = 30
+SLEEP_TIME = os.environ.get('SLEEP_TIME')
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
